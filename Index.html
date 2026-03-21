@@ -1,11 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hourly Tasks</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f5f5f5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#time {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 20px 0;
+}
+
+#tasks {
+    width: 90%;
+}
+
+.task {
+    background: #4CAF50;
+    color: white;
+    padding: 15px;
+    border-radius: 25px;
+    margin: 10px 0;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+
+.task:active {
+    transform: scale(0.97);
+}
+
+/* Modal */
+#modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0,0,0,0.4);
+}
+
+#modalContent {
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    width: 80%;
+    text-align: center;
+}
+
+.modal-btn {
+    display: block;
+    margin: 10px 0;
+    padding: 12px;
+    border-radius: 10px;
+    border: none;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.complete { background: #4CAF50; color: white; }
+.hide { background: #FF9800; color: white; }
+.cancel { background: #ccc; }
+</style>
 </head>
+
 <body>
+
+<div id="time">Loading time...</div>
+<div id="tasks"></div>
+
+<div id="modal">
+  <div id="modalContent">
+    <h3 id="modalTask"></h3>
+    <button class="modal-btn complete" onclick="completeTask()">Complete</button>
+    <button class="modal-btn hide" onclick="hideTask()">Hide</button>
+    <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+  </div>
+</div>
+
+<script>
+const API_KEY = "AIzaSyDeLGAsvQLTkswWKwDXjVm6f8XxCSxNLgo";
+const SHEET_ID = "11qw_QjNqM3uWS6lqP4MTw_MnEZdTnjMn8QmN6R1DI6w";
+
+let tasks = [];
+let currentTaskIndex = null;
+let hiddenTasks = new Set();
+let currentHourIndex = 0;
+
+// Map hour (13–18) to column index (B–G)
+function getHourColumn(hour) {
+    if (hour >= 13 && hour <= 18) return hour - 13;
+    return null;
+}
+
+// Fetch UK time
+async function fetchTime() {
+    const res = await fetch("https://timeapi.io/api/Time/current/zone?timeZone=Europe/London");
+    const data = await res.json();
+
+    document.getElementById("time").innerText =
+        data.time.substring(0,5);
+
+    currentHourIndex = getHourColumn(data.hour);
+}
+
+// Fetch tasks from sheet
+async function fetchTasks() {
+    const range = "A2:G22";
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${API_KEY}`;
     
+    const res = await fetch(url);
+    const data = await res.json();
+
+    tasks = data.values || [];
+    renderTasks();
+}
+
+function renderTasks() {
+    const container = document.getElementById("tasks");
+    container.innerHTML = "";
+
+    tasks.forEach((row, index) => {
+        const taskName = row[0];
+        const hourStatus = row[currentHourIndex + 1];
+
+        if (!taskName) return;
+
+        // Skip completed or hidden
+        if (hourStatus === "TRUE" || hiddenTasks.has(index)) return;
+
+        const div = document.createElement("div");
+        div.className = "task";
+        div.innerText = taskName;
+
+        div.onclick = () => openModal(index);
+
+        container.appendChild(div);
+    });
+}
+
+function openModal(index) {
+    currentTaskIndex = index;
+    document.getElementById("modalTask").innerText = tasks[index][0];
+    document.getElementById("modal").style.display = "flex";
+}
+
+function closeModal() {
+    document.getElementById("modal").style.display = "none";
+}
+
+// Mark complete in sheet
+async function completeTask() {
+    const row = currentTaskIndex + 2;
+    const col = currentHourIndex + 2; // B=2, C=3...
+
+    await fetch("https://script.google.com/macros/s/AKfycbxZnK07UhPMUZmOUlXSIPsIRSOqq6PnYD1NpMqaHO0RWMe1yDK3EbWw6WPIPAyxCtD3nw/exec", {
+        method: "POST",
+        body: JSON.stringify({ row, col })
+    });
+
+    closeModal();
+    fetchTasks();
+}
+
+// Hide locally
+function hideTask() {
+    hiddenTasks.add(currentTaskIndex);
+    closeModal();
+    renderTasks();
+}
+
+// Init
+async function init() {
+    await fetchTime();
+    await fetchTasks();
+}
+
+// Refresh every minute
+setInterval(init, 60000);
+
+init();
+</script>
+
 </body>
 </html>
