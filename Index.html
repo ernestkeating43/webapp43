@@ -2,92 +2,157 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hourly Tasks</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Tasks</title>
 
 <style>
+:root {
+    --bg: #f2f2f7;
+    --card: rgba(255,255,255,0.7);
+    --blur: blur(20px);
+    --text: #111;
+    --subtle: #8e8e93;
+    --accent: #007aff;
+}
+
 body {
     margin: 0;
-    font-family: Arial, sans-serif;
-    background: #f5f5f5;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+}
+
+/* Top Time */
+#header {
+    text-align: center;
+    padding: 30px 20px 10px;
 }
 
 #time {
-    font-size: 2rem;
-    font-weight: bold;
-    margin: 20px 0;
+    font-size: 3rem;
+    font-weight: 600;
+    letter-spacing: -1px;
 }
 
+#subtitle {
+    font-size: 0.9rem;
+    color: var(--subtle);
+}
+
+/* Task List */
 #tasks {
-    width: 90%;
+    padding: 10px 16px 120px;
+}
+
+.task-wrapper {
+    position: relative;
+    overflow: hidden;
+    border-radius: 20px;
+    margin-bottom: 12px;
+}
+
+.task-bg {
+    position: absolute;
+    inset: 0;
+    background: #34c759;
+    display: flex;
+    align-items: center;
+    padding-left: 20px;
+    color: white;
+    font-weight: 600;
+    font-size: 1rem;
 }
 
 .task {
-    background: #4CAF50;
-    color: white;
-    padding: 15px;
-    border-radius: 25px;
-    margin: 10px 0;
-    text-align: center;
-    cursor: pointer;
-    transition: transform 0.1s;
+    position: relative;
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    padding: 18px;
+    font-size: 1.1rem;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+    transition: transform 0.2s ease;
+    touch-action: pan-y;
 }
 
 .task:active {
     transform: scale(0.97);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
 }
 
-/* Modal */
-#modal {
+/* Bottom Sheet */
+#sheet {
     position: fixed;
-    top: 0;
     left: 0;
     right: 0;
+    bottom: -100%;
+    transition: bottom 0.25s ease;
+}
+
+#sheet.active {
     bottom: 0;
+}
+
+.sheet-bg {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.2);
     display: none;
-    justify-content: center;
-    align-items: center;
-    background: rgba(0,0,0,0.4);
 }
 
-#modalContent {
-    background: white;
-    padding: 20px;
-    border-radius: 15px;
-    width: 80%;
-    text-align: center;
-}
-
-.modal-btn {
+.sheet-bg.active {
     display: block;
-    margin: 10px 0;
-    padding: 12px;
-    border-radius: 10px;
-    border: none;
-    font-size: 1rem;
-    cursor: pointer;
 }
 
-.complete { background: #4CAF50; color: white; }
-.hide { background: #FF9800; color: white; }
-.cancel { background: #ccc; }
+.sheet-content {
+    background: #f9f9f9;
+    border-radius: 20px 20px 0 0;
+    padding: 10px;
+}
+
+.sheet-title {
+    text-align: center;
+    padding: 10px;
+    color: var(--subtle);
+    font-size: 0.9rem;
+}
+
+.action {
+    background: white;
+    padding: 16px;
+    margin: 6px 0;
+    border-radius: 14px;
+    text-align: center;
+    font-size: 1.1rem;
+}
+
+.complete { color: #34c759; }
+.hide { color: #ff9500; }
+.cancel {
+    margin-top: 10px;
+    font-weight: 600;
+}
 </style>
 </head>
 
 <body>
 
-<div id="time">Loading...</div>
+<div id="header">
+    <div id="time">--:--</div>
+    <div id="subtitle">Tasks for this hour</div>
+</div>
+
 <div id="tasks"></div>
 
-<div id="modal">
-  <div id="modalContent">
-    <h3 id="modalTask"></h3>
-    <button class="modal-btn complete" onclick="completeTask()">Complete</button>
-    <button class="modal-btn hide" onclick="hideTask()">Hide</button>
-    <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+<div class="sheet-bg" id="sheetBg" onclick="closeSheet()"></div>
+
+<div id="sheet">
+  <div class="sheet-content">
+    <div class="sheet-title" id="sheetTask"></div>
+
+    <div class="action complete" onclick="completeTask()">Complete</div>
+    <div class="action hide" onclick="hideTask()">Hide</div>
+    <div class="action cancel" onclick="closeSheet()">Cancel</div>
   </div>
 </div>
 
@@ -99,99 +164,158 @@ let tasks = [];
 let currentTaskIndex = null;
 let hiddenTasks = new Set();
 let currentHourIndex = 0;
+let lastDataHash = "";
 
-// Map hour (13–18) to column index (B–G)
 function getHourColumn(hour) {
     if (hour >= 13 && hour <= 18) return hour - 13;
     return null;
 }
 
-// Fetch UK time
 async function fetchTime() {
     const res = await fetch("https://timeapi.io/api/Time/current/zone?timeZone=Europe/London");
     const data = await res.json();
 
-    document.getElementById("time").innerText =
-        data.time.substring(0,5);
-
+    document.getElementById("time").innerText = data.time.substring(0,5);
     currentHourIndex = getHourColumn(data.hour);
 }
 
-// Fetch tasks from sheet
 async function fetchTasks() {
-    const range = "A2:G22";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?key=${API_KEY}`;
-    
-    const res = await fetch(url);
+    const res = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/A2:G22?key=${API_KEY}`
+    );
     const data = await res.json();
+    const newTasks = data.values || [];
 
-    tasks = data.values || [];
-    renderTasks();
+    // Create simple hash of data
+    const newHash = JSON.stringify(newTasks);
+
+    // Only update UI if something changed
+    if (newHash !== lastDataHash) {
+        tasks = newTasks;
+        lastDataHash = newHash;
+        renderTasks();
+    }
 }
+
+
 
 function renderTasks() {
     const container = document.getElementById("tasks");
     container.innerHTML = "";
 
     tasks.forEach((row, index) => {
-        const taskName = row[0];
-        const hourStatus = row[currentHourIndex + 1];
+        const name = row[0];
+        const status = row[currentHourIndex + 1];
 
-        if (!taskName) return;
+        if (!name || status === "TRUE" || hiddenTasks.has(index)) return;
 
-        // Skip completed or hidden
-        if (hourStatus === "TRUE" || hiddenTasks.has(index)) return;
+        const wrapper = document.createElement("div");
+        wrapper.className = "task-wrapper";
+
+        const bg = document.createElement("div");
+        bg.className = "task-bg";
+        bg.innerText = "✓ Complete";
 
         const div = document.createElement("div");
         div.className = "task";
-        div.innerText = taskName;
+        div.innerText = name;
 
-        div.onclick = () => openModal(index);
+        addSwipe(div, index);
 
-        container.appendChild(div);
+        wrapper.appendChild(bg);
+        wrapper.appendChild(div);
+        container.appendChild(wrapper);
     });
 }
 
-function openModal(index) {
+function addSwipe(element, index) {
+    let startX = 0;
+    let currentX = 0;
+    let dragging = false;
+
+    element.addEventListener("touchstart", (e) => {
+        startX = e.touches[0].clientX;
+        dragging = true;
+    });
+
+    element.addEventListener("touchmove", (e) => {
+        if (!dragging) return;
+
+        currentX = e.touches[0].clientX - startX;
+
+        if (currentX > 0) {
+            element.style.transform = `translateX(${currentX}px)`;
+        }
+    });
+
+    element.addEventListener("touchend", async () => {
+        dragging = false;
+
+        if (currentX > 120) {
+            // Trigger complete
+            element.style.transform = `translateX(100%)`;
+
+            currentTaskIndex = index;
+            await completeTask();
+        } else {
+            element.style.transform = "translateX(0)";
+        }
+
+        currentX = 0;
+    });
+
+    // Tap still opens sheet
+    element.addEventListener("click", () => {
+        if (Math.abs(currentX) < 10) {
+            openSheet(index);
+        }
+    });
+}
+
+function openSheet(index) {
     currentTaskIndex = index;
-    document.getElementById("modalTask").innerText = tasks[index][0];
-    document.getElementById("modal").style.display = "flex";
+    document.getElementById("sheetTask").innerText = tasks[index][0];
+    document.getElementById("sheet").classList.add("active");
+    document.getElementById("sheetBg").classList.add("active");
 }
 
-function closeModal() {
-    document.getElementById("modal").style.display = "none";
+function closeSheet() {
+    document.getElementById("sheet").classList.remove("active");
+    document.getElementById("sheetBg").classList.remove("active");
 }
 
-// Mark complete in sheet
 async function completeTask() {
     const row = currentTaskIndex + 2;
-    const col = currentHourIndex + 2; // B=2, C=3...
+    const col = currentHourIndex + 2;
 
-    await fetch("https://script.google.com/macros/s/AKfycbxZnK07UhPMUZmOUlXSIPsIRSOqq6PnYD1NpMqaHO0RWMe1yDK3EbWw6WPIPAyxCtD3nw/exec", {
+    // Optimistically update UI
+    tasks[currentTaskIndex][currentHourIndex + 1] = "TRUE";
+    renderTasks();
+
+    await fetch("YOUR_SCRIPT_URL_HERE", {
         method: "POST",
         body: JSON.stringify({ row, col })
     });
 
-    closeModal();
-    fetchTasks();
+    closeSheet();
 }
 
-// Hide locally
 function hideTask() {
     hiddenTasks.add(currentTaskIndex);
-    closeModal();
+    closeSheet();
     renderTasks();
 }
 
-// Init
 async function init() {
     await fetchTime();
     await fetchTasks();
 }
 
-// Refresh every minute
-setInterval(init, 60000);
+// Time updates every 30s
+setInterval(fetchTime, 30000);
 
+// Task updates every 5s
+setInterval(fetchTasks, 5000);
 init();
 </script>
 
